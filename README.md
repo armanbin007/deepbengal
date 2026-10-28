@@ -13,9 +13,10 @@ draws it on the map with a month slider and a time-series chart.
 | `docs/scope.md` | Step 1: scope decisions |
 | `docs/data_contract.md` | Step 5: file layout, columns, catalogue fields, variables |
 | `docs/screen_spec.md` | Step 6: three screens, every label and tooltip |
+| `docs/developer_plan.md` | Step 7–8: what the developer builds each day and how to check it |
 | `data/boundary/bd_maritime_boundary.geojson` | Step 2: Marine Regions Bangladesh EEZ v12 (MRGID 8481) |
 | `data/catalogue.json` | Step 3: 19 variables from 4 Copernicus products |
-| `data/timeseries/*.csv`, `data/biodiversity/occurrences.csv` | Step 5: three sample rows per file |
+| `data/timeseries/*.csv` | Step 5: three sample rows per file |
 
 ## Timeline
 | When | Spec writer | Data person | Developer |
@@ -23,7 +24,7 @@ draws it on the map with a month slider and a time-series chart.
 | Oct 27–28 | Steps 1, 5, 6, sample data | Boundary file, account, test download | Reads spec, sets up repo |
 | Oct 29 | Answers questions, methods text | Downloads and cleans all variables | Map, click, panel on sample data |
 | Oct 30 | Reviews screens against spec | Delivers final NetCDF, CSV, catalogue | Overlays, slider, chart on real data |
-| Oct 31 | Citations, demo script, pitch deck | Fixes data issues | Biodiversity layer, testing, deploy |
+| Oct 31 | Citations, demo script, pitch deck | Fixes data issues | Second click, methods page, testing, deploy |
 
 ## Run (from Oct 29)
 ```bash
@@ -33,5 +34,5 @@ streamlit run app/app.py
 Data downloading and clipping stay outside the app; the site only reads the prepared files in `data/`.
 
 ## Sources and licences
-Copernicus Marine Service products (DOIs in `data/catalogue.json`); Marine Regions boundary (CC BY 4.0);
-OBIS and GBIF occurrence records (CC BY 4.0 / CC0).
+Copernicus Marine Service products (DOIs in `data/catalogue.json`); Marine Regions boundary (CC BY 4.0).
+Biodiversity was dropped from scope on 28 Oct because it is not a Copernicus Marine product.

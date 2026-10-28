@@ -27,15 +27,10 @@ Every label and tooltip the app shows. The developer copies wording from here an
 | Zone name | Bangladesh maritime zone (territorial sea + EEZ) |
 | Search box label | Search datasets |
 | Search box placeholder | e.g. chlorophyll, salinity, wind |
-| Group headings | Optics and plankton · Physics · Chemistry · Wind · Biodiversity (each followed by the count in brackets) |
+| Group headings | Optics and plankton · Physics · Chemistry · Wind (each followed by the count in brackets) |
 | Variable row | {label} ({unit}) · {first year}–{last year} · {source} |
 | Variable row tooltip | Show {label} on the map |
 | No search match | No dataset matches "{query}". |
-| Biodiversity row | Species occurrences (points) · {first year}–{last year} · OBIS / GBIF |
-| Biodiversity toggle | Show species points |
-| Species filter label | Filter species |
-| Biodiversity note | Points show where people looked for and recorded these species. They say nothing about where the animals are absent. |
-| Sample-data warning (only while placeholder records are loaded) | Sample points only: replace with the OBIS / GBIF export before the demo. |
 
 ## Screen 3: Viewer state (after picking a variable)
 | Element | Text |
