@@ -1,0 +1,5 @@
+torch>=2.2
+xarray>=2024.6.0
+netcdf4>=1.7.1
+pandas>=2.2.0
+numpy>=1.26.0
