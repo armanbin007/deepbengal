@@ -260,13 +260,28 @@ def map_tab():
                 st.write(f'No dataset matches "{query}".')
 
     meta = next((v for v in catalogue if v["id"] == st.session_state.selected_var_id), None)
-    if meta and st.session_state.panel_open:
-        with panel_col:
-            st.success(f"Selected: {meta['display_label']} ({meta['display_unit']}). Source: {meta['product_id']}")
+    depth = None
+    if meta:
+        if meta["depths"]:
+            dkey = f"depth_{meta['id']}"
+            st.session_state.setdefault(dkey, meta["depths"][0])
+            depth = st.session_state[dkey]
+        ts_df = load_timeseries(meta["id"], depth)
+        months = ts_df["date"].dt.strftime("%Y-%m").tolist()
+        mkey = f"month_{meta['id']}"
+        if st.session_state.get(mkey) not in months:
+            st.session_state[mkey] = months[-1]
+        selected_month = st.session_state[mkey]
 
     # ---------------------------------------------------------- Screens 1 and 3: map, depth, slider, legend
     with map_col:
-        out = st_folium(base_map(), use_container_width=True, height=560,
+        layer = folium.FeatureGroup(name="data")
+        if meta:
+            uri, bounds = render_slice(meta["id"], selected_month, depth,
+                                       meta["colormap"], meta["vmin"], meta["vmax"], meta["log_scale"])
+            ImageOverlay(image=uri, bounds=bounds, opacity=0.85).add_to(layer)
+
+        out = st_folium(base_map(), feature_group_to_add=layer, use_container_width=True, height=560,
                         returned_objects=["last_clicked"], key="main_map")
 
         click = out.get("last_clicked") if out else None
@@ -275,6 +290,63 @@ def map_tab():
             if inside(click, boundary_poly) and not st.session_state.panel_open:
                 st.session_state.panel_open = True
                 st.rerun(scope="fragment")
+
+        if meta:
+            if meta["depths"]:
+                st.select_slider("Depth", options=meta["depths"], key=f"depth_{meta['id']}",
+                                 format_func=depth_label,
+                                 help="Depth below the sea surface. The map and the chart change together.")
+            st.select_slider("Month", options=months, key=f"month_{meta['id']}",
+                             help="Step through months. The map and the chart marker change together.")
+            lg, note = st.columns([1, 1.3])
+            with lg:
+                st.image(render_legend(meta["display_label"], meta["display_unit"], meta["colormap"],
+                                       meta["vmin"], meta["vmax"], meta["log_scale"]), width=420)
+            with note:
+                st.caption("Empty cells: no data. Satellite ocean colour has gaps in the June–September monsoon "
+                           "because of cloud cover." if meta["satellite"] else "Empty cells: outside the boundary.")
+
+    # ---------------------------------------------------------- chart, CSV and citation
+    if not meta:
+        return
+    st.divider()
+    sel_ts = pd.Timestamp(selected_month + "-01")
+    label, unit = meta["display_label"], meta["display_unit"]
+    export = ts_df.assign(date=ts_df["date"].dt.strftime("%Y-%m-%d"))
+    if depth is not None:
+        export.insert(1, "depth_m", depth)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=ts_df["date"], y=ts_df["max"], mode="lines", line=dict(width=0),
+                             showlegend=False, hoverinfo="skip"))
+    fig.add_trace(go.Scatter(x=ts_df["date"], y=ts_df["min"], mode="lines", line=dict(width=0), fill="tonexty",
+                             fillcolor="rgba(3,105,161,0.13)", name="Min–max range"))
+    fig.add_trace(go.Scatter(x=ts_df["date"], y=ts_df["mean"], mode="lines+markers", name="Monthly mean",
+                             line=dict(color="#0369a1", width=2), marker=dict(size=3)))
+    sel_y = ts_df.loc[ts_df["date"] == sel_ts, "mean"]
+    if not sel_y.empty:
+        fig.add_trace(go.Scatter(x=[sel_ts], y=[sel_y.iloc[0]], mode="markers", name="Selected month",
+                                 marker=dict(color="#dc2626", size=11, symbol="diamond")))
+    fig.add_vline(x=sel_ts, line_dash="dash", line_color="#dc2626")
+    title = f"{label}: boundary-wide monthly mean" + (f" at {depth_label(depth)}" if depth is not None else "")
+    fig.update_layout(
+        title=title, xaxis_title="Month", yaxis_title=f"{label} ({unit})",
+        yaxis_type="log" if meta["log_scale"] else "linear", yaxis_dtick=1 if meta["log_scale"] else None,
+        height=400, margin=dict(l=20, r=20, t=50, b=20), legend=dict(orientation="h", y=-0.22),
+    )
+    st.plotly_chart(fig, width="stretch")
+
+    b1, b2, _ = st.columns([1, 1, 2])
+    with b1:
+        st.download_button("Download chart data (CSV)", data=export.to_csv(index=False).encode("utf-8"),
+                           file_name=f"{meta['id']}{'_' + str(depth) + 'm' if depth is not None else ''}_series.csv",
+                           mime="text/csv", width="stretch")
+    with b2:
+        with st.popover("Source citation", width="stretch"):
+            st.write(f"E.U. Copernicus Marine Service Information (CMEMS). {meta['product_title']} "
+                     f"({meta['product_id']}), dataset {meta['dataset_id']}. DOI: {meta['doi']}. "
+                     f"Accessed {date.today():%d %B %Y}.")
+            st.markdown(f"[Product page]({meta['source_url']})")
 
 
 map_tab()

@@ -4,8 +4,8 @@ A web map that works like the Copernicus Marine viewer, but only for Bangladesh'
 The map opens on the boundary; clicking it opens a panel of every dataset we hold for those waters; picking one
 draws it on the map with a month slider and a time-series chart.
 
-> **Hackathon compliance:** this repository holds only pre-work (scope, data contract, screen spec, boundary,
-> catalogue and three-row sample data). The app itself (`app/app.py`) is built during the event, Oct 29–31.
+> **Hackathon compliance:** pre-work (scope, data contract, screen spec, boundary, catalogue, sample rows) was
+> committed on Oct 27–28. The app (`app/app.py`) is being built during the event, Oct 29–31.
 
 ## Pre-work (Oct 27–28)
 | Document | Guide step |
@@ -15,8 +15,15 @@ draws it on the map with a month slider and a time-series chart.
 | `docs/screen_spec.md` | Step 6: three screens, every label and tooltip |
 | `docs/developer_plan.md` | Step 7–8: what the developer builds each day and how to check it |
 | `data/boundary/bd_maritime_boundary.geojson` | Step 2: Marine Regions Bangladesh EEZ v12 (MRGID 8481) |
-| `data/catalogue.json` | Step 3: 19 variables from 4 Copernicus products |
-| `data/timeseries/*.csv` | Step 5: three sample rows per file |
+| `data/catalogue.json` | Step 3: 26 variables from 4 Copernicus products |
+| `data/netcdf/`, `data/timeseries/` | Step 5: full data delivered Oct 30 (26 variables, to mid-2026) |
+
+## Progress
+| Day | Status |
+|---|---|
+| Oct 29: map, click, panel | ✅ done |
+| Oct 30: full data, overlays with legend, depth selector, month slider, chart with selected month, CSV download, citation, in-place updates | ✅ done |
+| Oct 31: methods page, second click (grid cell), testing, deploy | ⏳ |
 
 ## Timeline
 | When | Spec writer | Data person | Developer |

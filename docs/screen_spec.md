@@ -28,7 +28,7 @@ Every label and tooltip the app shows. The developer copies wording from here an
 | Search box label | Search datasets |
 | Search box placeholder | e.g. chlorophyll, salinity, wind |
 | Group headings | Optics and plankton · Physics · Chemistry · Wind (each followed by the count in brackets) |
-| Variable row | {label} ({unit}) · {first year}–{last year} · {source} |
+| Variable row | {label} ({unit}) · {first year}–{last year} · {source} · {n} depths (only for variables with depth) |
 | Variable row tooltip | Show {label} on the map |
 | No search match | No dataset matches "{query}". |
 
@@ -39,9 +39,12 @@ Every label and tooltip the app shows. The developer copies wording from here an
 | Legend scale note (log variables) | Log scale |
 | Legend note, satellite variables | Empty cells: no data. Satellite ocean colour has gaps in the June–September monsoon because of cloud cover. |
 | Legend note, other variables | Empty cells: outside the boundary. |
+| Depth slider label (only for variables with depth) | Depth |
+| Depth values | {depth} m |
+| Depth slider tooltip | Depth below the sea surface. The map and the chart change together. |
 | Month slider label (below the map) | Month |
 | Month slider tooltip | Step through months. The map and the chart marker change together. |
-| Chart title | {label}: boundary-wide monthly mean |
+| Chart title | {label}: boundary-wide monthly mean (+ " at {depth} m" for depth variables) |
 | Chart x axis | Month |
 | Chart y axis | {label} ({unit}) |
 | Chart series | Monthly mean · Min–max range · Selected month |
