@@ -9,6 +9,9 @@ data/
   netcdf/<variable>_monthly.nc
   timeseries/<variable>_boundary_stats.csv
   catalogue.json
+  forecast/<variable>_forecast.nc          (made by model/train_unet.py)
+  forecast/<variable>_forecast_stats.csv
+  forecast/skill.json
 ```
 
 ## File rules
@@ -18,6 +21,7 @@ data/
 - **NetCDF:** one file per variable, dimensions `time`, (`depth`), `latitude`, `longitude`, monthly, cells outside
   the boundary empty (NaN). The data variable is named after the catalogue `id`. Physics variables keep 9 levels
   (1.5–13.5 m) and biogeochemistry 10 levels (0.5–14 m).
+- **Forecast stats CSV columns:** `date`, `depth` (blank for 2D), `mean`, `lower`, `upper`.
 - **Time series CSV columns:** `date` (YYYY-MM-01), `mean`, `min`, `max`, `std`, `n_cells`. For depth variables the
   app computes these at the selected depth from the NetCDF, so the chart always matches the map.
 - **catalogue.json:** one entry per variable with `id`, `label`, `unit`, `product_id`, `dataset_id`, `first_date`,

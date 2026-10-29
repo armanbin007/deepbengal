@@ -1,13 +1,14 @@
 """Marine data viewer for Bangladesh waters.
 
-Reads only prepared files under data/ (see docs/data_contract.md). All wording comes from docs/screen_spec.md.
+Reads only prepared files under data/ (see docs/data_contract.md) and the U-Net forecasts under data/forecast/
+(see model/train_unet.py). All wording comes from docs/screen_spec.md.
+
 The map tab runs as a Streamlit fragment and the data overlay is sent to the map as a separate layer, so picking a
 variable, a depth or a month updates the map and chart in place instead of reloading the whole page.
 """
 import base64
 import io
 import json
-import warnings
 from datetime import date
 from pathlib import Path
 
@@ -27,6 +28,7 @@ import plotly.graph_objects as go
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
+FORECAST = DATA / "forecast"
 GROUPS = ["Optics and plankton", "Physics", "Chemistry", "Wind"]
 ZONE_NAME = "Bangladesh maritime zone (territorial sea + EEZ)"
 BASEMAP_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}"
@@ -45,7 +47,7 @@ PRODUCT_INFO = {
         "Global Ocean Monthly Mean Sea Surface Wind and Stress from Scatterometer and Model",
         "Copernicus Marine · scatterometer wind climatology", False),
 }
-# Short names shown in the panel (the catalogue keeps the full Copernicus long names)
+# Short names shown in the panel (the data person's catalogue keeps the full Copernicus long names)
 DISPLAY_LABEL = {
     "CHL": "Chlorophyll-a (satellite)", "KD490": "Turbidity (KD490)", "ZSD": "Water clarity (Secchi depth)",
     "thetao": "Temperature", "so": "Salinity", "uo": "Eastward current", "vo": "Northward current",
@@ -58,16 +60,16 @@ DISPLAY_LABEL = {
     "wind_stress_magnitude": "Wind stress magnitude",
 }
 DISPLAY_UNIT = {"degrees_C": "°C", "1e-3": "PSU", "1": "no unit", "milligram m-3": "mg m-3"}
-LOG_SCALE_IDS = {"CHL", "KD490", "chl_bgc", "nppv", "phyc"}  # guide Step 5: chlorophyll on a log scale
+LOG_SCALE_IDS = {"CHL", "KD490", "chl_bgc", "nppv", "phyc"}
 
 st.set_page_config(page_title="Bangladesh Marine Data Viewer", layout="wide")
 
 
-# ------------------------------------------------------------------ loaders (cached so the slider is fast)
+# ------------------------------------------------------------------ loaders
 @st.cache_resource
-def open_grid(var_id):
-    """Open one NetCDF file once per server and keep it in memory, north-up latitude."""
-    path = DATA / "netcdf" / f"{var_id}_monthly.nc"
+def open_grid(var_id, kind="netcdf"):
+    """Open one NetCDF file once per server (observed or forecast) and keep it in memory, north-up latitude."""
+    path = DATA / "netcdf" / f"{var_id}_monthly.nc" if kind == "netcdf" else FORECAST / f"{var_id}_forecast.nc"
     if not path.exists():
         return None
     with xr.open_dataset(path) as ds:
@@ -81,6 +83,7 @@ def open_grid(var_id):
 def load_catalogue():
     """catalogue.json as delivered by the data person, plus display-only fields for the panel."""
     catalogue = json.loads((DATA / "catalogue.json").read_text())
+    skill = load_skill()
     for v in catalogue:
         title, source, satellite = PRODUCT_INFO.get(v["product_id"], (v["product_id"], "Copernicus Marine", False))
         v.setdefault("group", v.get("category"))
@@ -92,7 +95,15 @@ def load_catalogue():
         v.setdefault("log_scale", v["id"] in LOG_SCALE_IDS and v["vmin"] > 0)
         da = open_grid(v["id"])
         v["depths"] = [float(d) for d in da.depth.values] if da is not None and "depth" in da.dims else []
+        v["has_forecast"] = (FORECAST / f"{v['id']}_forecast.nc").exists()
+        v["skill"] = skill.get(v["id"])
     return catalogue
+
+
+@st.cache_data
+def load_skill():
+    path = FORECAST / "skill.json"
+    return json.loads(path.read_text()) if path.exists() else {}
 
 
 @st.cache_data
@@ -105,6 +116,18 @@ def boundary_shape(_geojson):
     return shape(_geojson["features"][0]["geometry"])
 
 
+def _stats_from_grid(da):
+    vals = da.values.reshape(da.shape[0], -1)
+    with np.errstate(all="ignore"):
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            df = pd.DataFrame({
+                "date": pd.to_datetime(da.time.values), "mean": np.nanmean(vals, 1), "min": np.nanmin(vals, 1),
+                "max": np.nanmax(vals, 1), "std": np.nanstd(vals, 1), "n_cells": np.isfinite(vals).sum(1)})
+    return df[df["n_cells"] > 0].reset_index(drop=True)
+
+
 @st.cache_data
 def load_timeseries(var_id, depth=None):
     """Boundary-wide monthly stats. 2D variables: the delivered CSV. Depth variables: computed from the NetCDF
@@ -113,14 +136,19 @@ def load_timeseries(var_id, depth=None):
         df = pd.read_csv(DATA / "timeseries" / f"{var_id}_boundary_stats.csv")
         df["date"] = pd.to_datetime(df["date"])
         return df
-    da = open_grid(var_id).sel(depth=depth)
-    vals = da.values.reshape(da.shape[0], -1)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", RuntimeWarning)
-        df = pd.DataFrame({
-            "date": pd.to_datetime(da.time.values), "mean": np.nanmean(vals, 1), "min": np.nanmin(vals, 1),
-            "max": np.nanmax(vals, 1), "std": np.nanstd(vals, 1), "n_cells": np.isfinite(vals).sum(1)})
-    return df[df["n_cells"] > 0].reset_index(drop=True)
+    return _stats_from_grid(open_grid(var_id).sel(depth=depth))
+
+
+@st.cache_data
+def load_forecast_stats(var_id, depth=None):
+    path = FORECAST / f"{var_id}_forecast_stats.csv"
+    if not path.exists():
+        return None
+    df = pd.read_csv(path)
+    df["date"] = pd.to_datetime(df["date"])
+    if depth is not None:
+        df = df[np.isclose(pd.to_numeric(df["depth"], errors="coerce"), depth)]
+    return df.reset_index(drop=True)
 
 
 def make_norm(vmin, vmax, log_scale):
@@ -134,9 +162,9 @@ def _merc_y(lat):
 
 
 @st.cache_data(max_entries=1024)
-def render_slice(var_id, month_str, depth, cmap_name, vmin, vmax, log_scale):
+def render_slice(var_id, kind, month_str, depth, cmap_name, vmin, vmax, log_scale):
     """One month (and depth) as a coloured PNG, resampled to Web-Mercator rows so it lines up with the basemap."""
-    da = open_grid(var_id)
+    da = open_grid(var_id, kind)
     if depth is not None:
         da = da.sel(depth=depth)
     sl = da.sel(time=pd.Timestamp(month_str), method="nearest")
@@ -258,28 +286,32 @@ def map_tab():
                             st.rerun(scope="fragment")
             if not matches:
                 st.write(f'No dataset matches "{query}".')
-
     meta = next((v for v in catalogue if v["id"] == st.session_state.selected_var_id), None)
     depth = None
+    obs_months, fc_months = [], []
     if meta:
         if meta["depths"]:
             dkey = f"depth_{meta['id']}"
             st.session_state.setdefault(dkey, meta["depths"][0])
             depth = st.session_state[dkey]
         ts_df = load_timeseries(meta["id"], depth)
-        months = ts_df["date"].dt.strftime("%Y-%m").tolist()
+        obs_months = ts_df["date"].dt.strftime("%Y-%m").tolist()
+        fc_df = load_forecast_stats(meta["id"], depth) if meta["has_forecast"] else None
+        fc_months = fc_df["date"].dt.strftime("%Y-%m").tolist() if fc_df is not None and len(fc_df) else []
+        months = obs_months + fc_months
         mkey = f"month_{meta['id']}"
         if st.session_state.get(mkey) not in months:
-            st.session_state[mkey] = months[-1]
+            st.session_state[mkey] = obs_months[-1]
         selected_month = st.session_state[mkey]
+        is_forecast = selected_month in fc_months
 
     # ---------------------------------------------------------- Screens 1 and 3: map, depth, slider, legend
     with map_col:
         layer = folium.FeatureGroup(name="data")
         if meta:
-            uri, bounds = render_slice(meta["id"], selected_month, depth,
+            uri, bounds = render_slice(meta["id"], "forecast" if is_forecast else "netcdf", selected_month, depth,
                                        meta["colormap"], meta["vmin"], meta["vmax"], meta["log_scale"])
-            ImageOverlay(image=uri, bounds=bounds, opacity=0.85).add_to(layer)
+            ImageOverlay(image=uri, bounds=bounds, opacity=0.85 if not is_forecast else 0.75).add_to(layer)
 
         out = st_folium(base_map(), feature_group_to_add=layer, use_container_width=True, height=560,
                         returned_objects=["last_clicked"], key="main_map")
@@ -297,14 +329,21 @@ def map_tab():
                                  format_func=depth_label,
                                  help="Depth below the sea surface. The map and the chart change together.")
             st.select_slider("Month", options=months, key=f"month_{meta['id']}",
-                             help="Step through months. The map and the chart marker change together.")
+                             format_func=lambda m: f"{m} (forecast)" if m in fc_months else m,
+                             help="Step through months. The map and the chart marker change together. "
+                                  "Months after the last observation are U-Net forecasts.")
             lg, note = st.columns([1, 1.3])
             with lg:
                 st.image(render_legend(meta["display_label"], meta["display_unit"], meta["colormap"],
                                        meta["vmin"], meta["vmax"], meta["log_scale"]), width=420)
             with note:
-                st.caption("Empty cells: no data. Satellite ocean colour has gaps in the June–September monsoon "
-                           "because of cloud cover." if meta["satellite"] else "Empty cells: outside the boundary.")
+                if is_forecast:
+                    sk = meta.get("skill") or {}
+                    st.caption(f"Forecast map (U-Net), not an observation. Trained on data up to "
+                               f"{sk.get('trained_through', '–')}.")
+                else:
+                    st.caption("Empty cells: no data. Satellite ocean colour has gaps in the June–September monsoon "
+                               "because of cloud cover." if meta["satellite"] else "Empty cells: outside the boundary.")
 
     # ---------------------------------------------------------- chart, CSV and citation
     if not meta:
@@ -312,7 +351,7 @@ def map_tab():
     st.divider()
     sel_ts = pd.Timestamp(selected_month + "-01")
     label, unit = meta["display_label"], meta["display_unit"]
-    export = ts_df.assign(date=ts_df["date"].dt.strftime("%Y-%m-%d"))
+    export = ts_df.assign(date=ts_df["date"].dt.strftime("%Y-%m-%d"), type="observed")
     if depth is not None:
         export.insert(1, "depth_m", depth)
 
@@ -323,9 +362,27 @@ def map_tab():
                              fillcolor="rgba(3,105,161,0.13)", name="Min–max range"))
     fig.add_trace(go.Scatter(x=ts_df["date"], y=ts_df["mean"], mode="lines+markers", name="Monthly mean",
                              line=dict(color="#0369a1", width=2), marker=dict(size=3)))
-    sel_y = ts_df.loc[ts_df["date"] == sel_ts, "mean"]
-    if not sel_y.empty:
-        fig.add_trace(go.Scatter(x=[sel_ts], y=[sel_y.iloc[0]], mode="markers", name="Selected month",
+    if fc_months:
+        fig.add_trace(go.Scatter(x=fc_df["date"], y=fc_df["upper"], mode="lines", line=dict(width=0),
+                                 showlegend=False, hoverinfo="skip"))
+        fig.add_trace(go.Scatter(x=fc_df["date"], y=fc_df["lower"], mode="lines", line=dict(width=0), fill="tonexty",
+                                 fillcolor="rgba(124,58,237,0.15)", name="Forecast 95% range"))
+        fig.add_trace(go.Scatter(x=pd.concat([ts_df["date"].tail(1), fc_df["date"]]),
+                                 y=pd.concat([ts_df["mean"].tail(1), fc_df["mean"]]),
+                                 mode="lines+markers", name="U-Net forecast",
+                                 line=dict(color="#7c3aed", width=2, dash="dash"), marker=dict(size=4)))
+        export = pd.concat([export, pd.DataFrame({
+            "date": fc_df["date"].dt.strftime("%Y-%m-%d"), "mean": fc_df["mean"], "forecast_lower": fc_df["lower"],
+            "forecast_upper": fc_df["upper"], "type": "forecast"}).assign(
+            **({"depth_m": depth} if depth is not None else {}))], ignore_index=True)
+
+    sel_y = None
+    if selected_month in obs_months:
+        sel_y = ts_df.loc[ts_df["date"] == sel_ts, "mean"].iloc[0]
+    elif fc_months:
+        sel_y = fc_df.loc[fc_df["date"] == sel_ts, "mean"].iloc[0]
+    if sel_y is not None:
+        fig.add_trace(go.Scatter(x=[sel_ts], y=[sel_y], mode="markers", name="Selected month",
                                  marker=dict(color="#dc2626", size=11, symbol="diamond")))
     fig.add_vline(x=sel_ts, line_dash="dash", line_color="#dc2626")
     title = f"{label}: boundary-wide monthly mean" + (f" at {depth_label(depth)}" if depth is not None else "")
@@ -335,6 +392,14 @@ def map_tab():
         height=400, margin=dict(l=20, r=20, t=50, b=20), legend=dict(orientation="h", y=-0.22),
     )
     st.plotly_chart(fig, width="stretch")
+
+    sk = meta.get("skill")
+    if fc_months and sk:
+        s = sk.get("skill_vs_climatology")
+        verdict = (f"beat the average-year baseline by {s * 100:.0f}%" if s is not None and s > 0
+                   else "did not beat the average-year baseline, so treat this forecast as indicative only")
+        st.caption(f"U-Net 12-month forecast ({sk['forecast_period']}). In a test on {sk['test_period']}, hidden from "
+                   f"training, it {verdict}. The shaded band is the 95% range of its test errors.")
 
     b1, b2, _ = st.columns([1, 1, 2])
     with b1:

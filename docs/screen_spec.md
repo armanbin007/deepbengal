@@ -43,11 +43,14 @@ Every label and tooltip the app shows. The developer copies wording from here an
 | Depth values | {depth} m |
 | Depth slider tooltip | Depth below the sea surface. The map and the chart change together. |
 | Month slider label (below the map) | Month |
-| Month slider tooltip | Step through months. The map and the chart marker change together. |
+| Forecast months on the slider | {YYYY-MM} (forecast) |
+| Month slider tooltip | Step through months. The map and the chart marker change together. Months after the last observation are U-Net forecasts. |
+| Legend note, forecast month | Forecast map (U-Net), not an observation. Trained on data up to {last month}. |
 | Chart title | {label}: boundary-wide monthly mean (+ " at {depth} m" for depth variables) |
 | Chart x axis | Month |
 | Chart y axis | {label} ({unit}) |
-| Chart series | Monthly mean · Min–max range · Selected month |
+| Chart series | Monthly mean · Min–max range · U-Net forecast · Forecast 95% range · Selected month |
+| Forecast note under the chart | U-Net 12-month forecast ({period}). In a test on {test period}, hidden from training, it beat the average-year baseline by {n}% / did not beat the average-year baseline, so treat this forecast as indicative only. The shaded band is the 95% range of its test errors. |
 | Download button | Download chart data (CSV) |
 | Citation button | Source citation |
 | Citation text | E.U. Copernicus Marine Service Information (CMEMS). {product_title} ({product_id}), dataset {dataset_id}. DOI: {doi}. Accessed {today}. |

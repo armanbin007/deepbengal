@@ -23,6 +23,7 @@ draws it on the map with a month slider and a time-series chart.
 |---|---|
 | Oct 29: map, click, panel | ✅ done |
 | Oct 30: full data, overlays with legend, depth selector, month slider, chart with selected month, CSV download, citation, in-place updates | ✅ done |
+| Oct 30: U-Net 12-month forecasts for all 26 variables (mentor suggestion), shown on the slider and chart | ✅ done |
 | Oct 31: methods page, second click (grid cell), testing, deploy | ⏳ |
 
 ## Timeline
@@ -33,7 +34,16 @@ draws it on the map with a month slider and a time-series chart.
 | Oct 30 | Reviews screens against spec | Delivers final NetCDF, CSV, catalogue | Overlays, slider, chart on real data |
 | Oct 31 | Citations, demo script, pitch deck | Fixes data issues | Second click, methods page, testing, deploy |
 
-## Run (from Oct 29)
+## Forecasts (U-Net)
+One small U-Net per variable predicts the next 12 monthly maps from the last 12, all depth levels together.
+It was tested on the last 24 months (hidden from training) against an average-year baseline before the final
+model was trained on all months. Scores are in `data/forecast/skill.json`.
+```bash
+pip install -r model/requirements.txt
+python model/train_unet.py            # about 2 hours on a laptop CPU
+```
+
+## Run
 ```bash
 pip install -r requirements.txt
 streamlit run app/app.py
