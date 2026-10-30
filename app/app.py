@@ -60,6 +60,9 @@ DISPLAY_LABEL = {
     "wind_stress_magnitude": "Wind stress magnitude",
 }
 DISPLAY_UNIT = {"degrees_C": "°C", "1e-3": "PSU", "1": "no unit", "milligram m-3": "mg m-3"}
+# Marine protected areas: outline colour per area (files in data/mpa/bd_mpas.geojson)
+MPA_COLORS = {"Swatch of No Ground MPA": "#e11d48", "Nijhum Dwip MPA": "#16a34a",
+              "St. Martin's Island MPA": "#d97706", "Naf MPA": "#7c3aed"}
 LOG_SCALE_IDS = {"CHL", "KD490", "chl_bgc", "nppv", "phyc"}
 
 st.set_page_config(page_title="Bangladesh Marine Data Viewer", layout="wide")
@@ -109,6 +112,17 @@ def load_skill():
 @st.cache_data
 def load_boundary():
     return json.loads((DATA / "boundary" / "bd_maritime_boundary.geojson").read_text())
+
+
+@st.cache_data
+def load_mpas():
+    path = DATA / "mpa" / "bd_mpas.geojson"
+    return json.loads(path.read_text()) if path.exists() else None
+
+
+@st.cache_resource
+def mpa_shapes(_geojson):
+    return [(f["properties"]["name"], shape(f["geometry"])) for f in _geojson["features"]] if _geojson else []
 
 
 @st.cache_resource
@@ -269,8 +283,11 @@ catalogue = load_catalogue()
 boundary_geojson = load_boundary()
 boundary_poly = boundary_shape(boundary_geojson)
 b_minx, b_miny, b_maxx, b_maxy = boundary_poly.bounds
+mpa_geojson = load_mpas()
+mpas = mpa_shapes(mpa_geojson)
 
-for k, v in {"panel_open": False, "selected_var_id": None, "last_click": None, "pixel_click": None}.items():
+for k, v in {"panel_open": False, "selected_var_id": None, "last_click": None, "pixel_click": None,
+             "show_mpa": True}.items():
     st.session_state.setdefault(k, v)
 
 st.markdown(
@@ -281,7 +298,7 @@ st.markdown(
 )
 
 
-def base_map():
+def base_map(show_mpa=True):
     """Built the same way on every run, so streamlit-folium keeps the browser's map and only swaps the data layer."""
     m = folium.Map(
         location=[(b_miny + b_maxy) / 2, (b_minx + b_maxx) / 2], zoom_start=7, min_zoom=6, max_zoom=10,
@@ -294,6 +311,15 @@ def base_map():
         highlight_function=lambda x: {"weight": 4},
         tooltip="Bangladesh maritime zone: click to open the data panel",
     ).add_to(m)
+    if show_mpa and mpa_geojson:
+        folium.GeoJson(
+            mpa_geojson, name="Marine protected areas",
+            style_function=lambda f: {"color": MPA_COLORS.get(f["properties"]["name"], "#e11d48"), "weight": 2.5,
+                                      "dashArray": "6 4", "fillColor": MPA_COLORS.get(f["properties"]["name"], "#e11d48"),
+                                      "fillOpacity": 0.08},
+            highlight_function=lambda f: {"weight": 4, "fillOpacity": 0.18},
+            tooltip=folium.GeoJsonTooltip(fields=["name", "area_km2"], aliases=["", "Area (km²)"]),
+        ).add_to(m)
     m.fit_bounds([[b_miny - 0.2, b_minx - 0.2], [b_maxy + 0.2, b_maxx + 0.2]])
     # Chrome draws a focus rectangle around a clicked Leaflet shape; hide it
     m.get_root().header.add_child(folium.Element("<style>.leaflet-interactive:focus{outline:none}</style>"))
@@ -310,7 +336,9 @@ def pixel_inspector(meta, pixel, depth, sel_ts, selected_month, is_forecast, obs
         h1, h2, h3 = st.columns([2.2, 1.3, 0.8])
         with h1:
             st.markdown(f"#### Pixel {lon:.3f}°E, {lat:.3f}°N")
-            st.caption(f"{label} · grid cell nearest to your click · {meta['grid_resolution']}")
+            in_mpa = [n for n, g in mpas if g.contains(Point(lon, lat))]
+            st.caption(f"{label} · grid cell nearest to your click · {meta['grid_resolution']}"
+                       + (f" · inside **{', '.join(in_mpa)}**" if in_mpa else ""))
         with h2:
             src = fc_px if is_forecast and fc_px is not None else obs_px
             v = src[col].get(sel_ts, np.nan) if col in src.columns else np.nan
@@ -480,7 +508,7 @@ def map_tab():
                                     tooltip=folium.Tooltip(html, permanent=True, direction="right",
                                                            offset=(10, 0))).add_to(layer)
 
-        out = st_folium(base_map(), feature_group_to_add=layer, use_container_width=True, height=560,
+        out = st_folium(base_map(st.session_state.show_mpa), feature_group_to_add=layer, use_container_width=True, height=560,
                         returned_objects=["last_clicked"], key="main_map")
 
         click = out.get("last_clicked") if out else None
@@ -493,6 +521,18 @@ def map_tab():
                 elif meta:
                     st.session_state.pixel_click = click
                     st.rerun(scope="fragment")
+
+        if mpas:
+            t, chips = st.columns([1.5, 3])
+            with t:
+                st.toggle("Show marine protected areas", key="show_mpa")
+            with chips:
+                if st.session_state.show_mpa:
+                    st.markdown(" ".join(
+                        f"<span style='white-space:nowrap;margin-right:14px;font-size:.85rem'>"
+                        f"<span style='display:inline-block;width:18px;border-top:3px dashed {MPA_COLORS.get(n, '#e11d48')};"
+                        f"vertical-align:middle;margin-right:5px'></span>{n}</span>" for n, _ in mpas),
+                        unsafe_allow_html=True)
 
         if meta:
             if meta["depths"]:

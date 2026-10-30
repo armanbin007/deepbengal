@@ -9,6 +9,7 @@ data/
   netcdf/<variable>_monthly.nc
   timeseries/<variable>_boundary_stats.csv
   catalogue.json
+  mpa/bd_mpas.geojson                       marine protected areas (outlines on the map)
   forecast/<variable>_forecast.nc          (made by model/train_unet.py)
   forecast/<variable>_forecast_stats.csv
   forecast/skill.json
@@ -22,6 +23,8 @@ data/
   the boundary empty (NaN). The data variable is named after the catalogue `id`. Physics variables keep 9 levels
   (1.5–13.5 m) and biogeochemistry 10 levels (0.5–14 m).
 - **Forecast stats CSV columns:** `date`, `depth` (blank for 2D), `mean`, `lower`, `upper`.
+- **Marine protected areas:** one feature per MPA with `name`, `area_km2`, `source_file`, EPSG:4326. Swatch of No
+  Ground, Nijhum Dwip (three overlapping polygons in the source merged into one), St. Martin's Island and Naf.
 - **Time series CSV columns:** `date` (YYYY-MM-01), `mean`, `min`, `max`, `std`, `n_cells`. For depth variables the
   app computes these at the selected depth from the NetCDF, so the chart always matches the map.
 - **catalogue.json:** one entry per variable with `id`, `label`, `unit`, `product_id`, `dataset_id`, `first_date`,

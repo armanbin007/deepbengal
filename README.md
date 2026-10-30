@@ -24,6 +24,7 @@ draws it on the map with a month slider and a time-series chart.
 | Oct 29: map, click, panel | ✅ done |
 | Oct 30: full data, overlays with legend, depth selector, month slider, chart with selected month, CSV download, citation, in-place updates | ✅ done |
 | Oct 30: U-Net 12-month forecasts for all 26 variables (mentor suggestion), shown on the slider and chart | ✅ done |
+| Oct 30: Copernicus-style pixel inspector; marine protected area outlines (SoNG, Nijhum Dwip, St. Martin's, Naf) | ✅ done |
 | Oct 31: methods page, second click (grid cell), testing, deploy | ⏳ |
 
 ## Timeline

@@ -18,6 +18,9 @@ Every label and tooltip the app shows. The developer copies wording from here an
 | Element | Text |
 |---|---|
 | Instruction line | Click the Bangladesh maritime boundary to see the data we hold for these waters. |
+| MPA outlines | Dashed outline per marine protected area, one colour each; tooltip: {name} · Area (km²) {area} |
+| MPA toggle | Show marine protected areas |
+| MPA legend (under the map) | Dashed line in each colour + {name} |
 | Boundary tooltip | Bangladesh maritime zone: click to open the data panel |
 | Click outside the boundary | (nothing happens; instruction line stays) |
 
@@ -57,7 +60,7 @@ Every label and tooltip the app shows. The developer copies wording from here an
 | Second-click hint (panel) | Click any point in the sea to inspect that pixel: its value, time series and, for variables with depth, its vertical profile. |
 | Map label on the clicked pixel | {lon}°E, {lat}°N · {label}: {value} {unit} · {month} (forecast) · {depth} m |
 | Pixel panel heading | Pixel {lon}°E, {lat}°N |
-| Pixel panel subtitle | {label} · grid cell nearest to your click · {grid resolution} |
+| Pixel panel subtitle | {label} · grid cell nearest to your click · {grid resolution} · inside {MPA name} (when the pixel is inside an MPA) |
 | Pixel value | {month} (forecast) · {depth} m → {value} {unit} |
 | Pixel charts | Time series at this pixel · {depth} m / Vertical profile · {month} / Depth–time section at this pixel · last 3 years + forecast |
 | Stats under each chart | x̄ {mean} ↓ {min} ↑ {max} {unit} |
