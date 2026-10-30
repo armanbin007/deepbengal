@@ -54,10 +54,14 @@ Every label and tooltip the app shows. The developer copies wording from here an
 | Download button | Download chart data (CSV) |
 | Citation button | Source citation |
 | Citation text | E.U. Copernicus Marine Service Information (CMEMS). {product_title} ({product_id}), dataset {dataset_id}. DOI: {doi}. Accessed {today}. |
-| Second-click hint | Click a point inside the boundary to add that grid cell's series to the chart. |
-| Grid-cell series name | Grid cell {lat}°N {lon}°E |
-| Remove grid cell button | Remove grid cell |
-| Grid cell without data | No data in that grid cell for {label}. |
+| Second-click hint (panel) | Click any point in the sea to inspect that pixel: its value, time series and, for variables with depth, its vertical profile. |
+| Map label on the clicked pixel | {lon}°E, {lat}°N · {label}: {value} {unit} · {month} (forecast) · {depth} m |
+| Pixel panel heading | Pixel {lon}°E, {lat}°N |
+| Pixel panel subtitle | {label} · grid cell nearest to your click · {grid resolution} |
+| Pixel value | {month} (forecast) · {depth} m → {value} {unit} |
+| Pixel charts | Time series at this pixel · {depth} m / Vertical profile · {month} / Depth–time section at this pixel · last 3 years + forecast |
+| Stats under each chart | x̄ {mean} ↓ {min} ↑ {max} {unit} |
+| Pixel buttons | Close pixel · Download pixel data (CSV) |
 
 ## About and methods page
 Lists every Copernicus product with its DOI and every outside source with its licence (see the app).

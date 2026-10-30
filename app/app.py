@@ -203,6 +203,55 @@ def render_legend(label, unit, cmap_name, vmin, vmax, log_scale):
     return buf.getvalue()
 
 
+@st.cache_data
+def valid_cells(var_id):
+    """Latitude/longitude of every grid cell that has data at any depth and month."""
+    da = open_grid(var_id)
+    vals = da.values
+    has = np.isfinite(vals).any(axis=tuple(range(vals.ndim - 2)))
+    lat2d, lon2d = np.meshgrid(da.latitude.values, da.longitude.values, indexing="ij")
+    return lat2d[has], lon2d[has]
+
+
+def nearest_cell(var_id, lat, lon, max_deg=0.25):
+    """Grid cell nearest to a click that has data (a click on the coast snaps to the closest sea cell)."""
+    lats, lons = valid_cells(var_id)
+    if lats.size == 0:
+        return None
+    d2 = (lats - lat) ** 2 + ((lons - lon) * np.cos(np.radians(lat))) ** 2
+    i = int(np.argmin(d2))
+    return (float(lats[i]), float(lons[i])) if d2[i] <= max_deg ** 2 else None
+
+
+@st.cache_data(max_entries=256)
+def pixel_series(var_id, lat, lon):
+    """Observed and forecast values at one grid cell: DataFrames indexed by month, one column per depth."""
+    def frame(da):
+        if da is None:
+            return None
+        cell = da.sel(latitude=lat, longitude=lon, method="nearest")
+        if "depth" in cell.dims:
+            df = pd.DataFrame(cell.transpose("time", "depth").values, columns=[float(d) for d in cell.depth.values])
+        else:
+            df = pd.DataFrame({None: cell.values})
+        df.index = pd.to_datetime(cell.time.values)
+        return df
+    return frame(open_grid(var_id)), frame(open_grid(var_id, "forecast"))
+
+
+def plotly_scale(cmap_name, n=11):
+    cmap = plt.get_cmap(cmap_name)
+    return [[i / (n - 1), mcolors.to_hex(cmap(i / (n - 1)))] for i in range(n)]
+
+
+def stats_line(values, unit):
+    v = np.asarray(values, dtype=float)
+    v = v[np.isfinite(v)]
+    if not v.size:
+        return "No data"
+    return f"x̄ {v.mean():.4g}  ↓ {v.min():.4g}  ↑ {v.max():.4g} {unit}"
+
+
 def years(first, last):
     return f"{str(first)[:4]}–{str(last)[:4]}"
 
@@ -221,7 +270,7 @@ boundary_geojson = load_boundary()
 boundary_poly = boundary_shape(boundary_geojson)
 b_minx, b_miny, b_maxx, b_maxy = boundary_poly.bounds
 
-for k, v in {"panel_open": False, "selected_var_id": None, "last_click": None}.items():
+for k, v in {"panel_open": False, "selected_var_id": None, "last_click": None, "pixel_click": None}.items():
     st.session_state.setdefault(k, v)
 
 st.markdown(
@@ -249,6 +298,103 @@ def base_map():
     # Chrome draws a focus rectangle around a clicked Leaflet shape; hide it
     m.get_root().header.add_child(folium.Element("<style>.leaflet-interactive:focus{outline:none}</style>"))
     return m
+
+
+# ------------------------------------------------------------------ pixel inspector
+def pixel_inspector(meta, pixel, depth, sel_ts, selected_month, is_forecast, obs_px, fc_px):
+    """Like the Copernicus viewer: value, time series, vertical profile and depth-time section at one pixel."""
+    label, unit, lat, lon = meta["display_label"], meta["display_unit"], pixel[0], pixel[1]
+    col = depth if depth is not None else None
+    log = meta["log_scale"]
+    with st.container(border=True):
+        h1, h2, h3 = st.columns([2.2, 1.3, 0.8])
+        with h1:
+            st.markdown(f"#### Pixel {lon:.3f}°E, {lat:.3f}°N")
+            st.caption(f"{label} · grid cell nearest to your click · {meta['grid_resolution']}")
+        with h2:
+            src = fc_px if is_forecast and fc_px is not None else obs_px
+            v = src[col].get(sel_ts, np.nan) if col in src.columns else np.nan
+            st.metric(f"{selected_month}{' (forecast)' if is_forecast else ''}"
+                      f"{' · ' + depth_label(depth) if depth is not None else ''}",
+                      "no data" if not np.isfinite(v) else f"{v:.4g} {unit}")
+        with h3:
+            if st.button("Close pixel", width="stretch"):
+                st.session_state.pixel_click = None
+                st.rerun(scope="fragment")
+
+        # 1. time series at this pixel (and depth)
+        ts = go.Figure()
+        ts.add_trace(go.Scatter(x=obs_px.index, y=obs_px[col], mode="lines", name="Observed",
+                                line=dict(color="#0369a1", width=1.6)))
+        if fc_px is not None and col in fc_px.columns:
+            ts.add_trace(go.Scatter(x=[obs_px.index[-1]] + list(fc_px.index),
+                                    y=[obs_px[col].iloc[-1]] + list(fc_px[col]), mode="lines",
+                                    name="U-Net forecast", line=dict(color="#7c3aed", width=2, dash="dash")))
+        ts.add_vline(x=sel_ts, line_dash="dash", line_color="#dc2626")
+        ts.update_layout(title=f"Time series at this pixel{' · ' + depth_label(depth) if depth is not None else ''}",
+                         height=280, margin=dict(l=10, r=10, t=40, b=10), yaxis_title=f"{label} ({unit})",
+                         yaxis_type="log" if log else "linear", legend=dict(orientation="h", y=-0.25))
+        st.plotly_chart(ts, width="stretch", key="px_ts")
+        st.caption(stats_line(obs_px[col], unit))
+
+        if meta["depths"]:
+            c1, c2 = st.columns(2)
+            depths = meta["depths"]
+            # 2. vertical profile at the selected month
+            with c1:
+                src = fc_px if is_forecast and fc_px is not None else obs_px
+                prof = src.loc[sel_ts] if sel_ts in src.index else pd.Series(np.nan, index=depths)
+                pf = go.Figure()
+                pf.add_trace(go.Scatter(x=prof.values, y=depths, mode="lines+markers", name="Profile",
+                                        line=dict(color="#0369a1", width=2), marker=dict(size=6)))
+                if depth is not None and np.isfinite(prof.get(depth, np.nan)):
+                    pf.add_trace(go.Scatter(x=[prof[depth]], y=[depth], mode="markers", name="Selected depth",
+                                            marker=dict(color="#dc2626", size=12, symbol="diamond")))
+                pf.update_layout(title=f"Vertical profile · {selected_month}", height=340,
+                                 margin=dict(l=10, r=10, t=40, b=10), showlegend=False,
+                                 xaxis_title=f"{label} ({unit})", yaxis_title="Depth (m)",
+                                 xaxis_type="log" if log else "linear")
+                pf.update_yaxes(autorange="reversed")
+                st.plotly_chart(pf, width="stretch", key="px_profile")
+                st.caption(stats_line(prof.values, unit))
+            # 3. depth-time section (Hovmöller) at this pixel
+            with c2:
+                recent = obs_px.iloc[-36:]                       # last 3 years, like the Copernicus viewer
+                full = recent if fc_px is None else pd.concat([recent, fc_px])
+                z = full[depths].T.values.astype(float)
+                if log:
+                    with np.errstate(all="ignore"):
+                        z = np.log10(np.where(z > 0, z, np.nan))
+                zmin, zmax = (np.log10(max(meta["vmin"], 1e-4)), np.log10(meta["vmax"])) if log else (
+                    meta["vmin"], meta["vmax"])
+                hm = go.Figure(go.Heatmap(
+                    x=full.index, y=depths, z=z, colorscale=plotly_scale(meta["colormap"]), zmin=zmin, zmax=zmax,
+                    colorbar=dict(title=dict(text=("log10 " if log else "") + unit, side="right"), thickness=10),
+                    hovertemplate="%{x|%Y-%m}<br>%{y:.1f} m<br>%{z:.4g}<extra></extra>"))
+                if fc_px is not None:
+                    hm.add_vline(x=obs_px.index[-1], line_color="#7c3aed", line_dash="dot")
+                hm.add_vline(x=sel_ts, line_color="#dc2626", line_dash="dash")
+                hm.update_layout(title="Depth–time section at this pixel · last 3 years"
+                                       + (" + forecast" if fc_px is not None else ""), height=340,
+                                 margin=dict(l=10, r=10, t=40, b=10), yaxis_title="Depth (m)")
+                hm.update_yaxes(autorange="reversed")
+                st.plotly_chart(hm, width="stretch", key="px_hovmoller")
+                st.caption(stats_line(full[depths].values, unit)
+                           + ("  · dotted line: forecast starts" if fc_px is not None else ""))
+
+        out = obs_px.copy()
+        out.columns = [f"{meta['id']}_{c:.1f}m" if c is not None else meta["id"] for c in out.columns]
+        out.insert(0, "type", "observed")
+        if fc_px is not None:
+            f = fc_px.copy()
+            f.columns = out.columns[1:]
+            f.insert(0, "type", "forecast")
+            out = pd.concat([out, f])
+        out.index = out.index.strftime("%Y-%m-%d")
+        out.index.name = "date"
+        st.download_button("Download pixel data (CSV)", data=out.to_csv().encode("utf-8"),
+                           file_name=f"{meta['id']}_pixel_{lat:.3f}N_{lon:.3f}E.csv", mime="text/csv",
+                           key="px_csv")
 
 
 # ------------------------------------------------------------------ map tab (fragment: updates in place)
@@ -286,6 +432,9 @@ def map_tab():
                             st.rerun(scope="fragment")
             if not matches:
                 st.write(f'No dataset matches "{query}".')
+            if st.session_state.selected_var_id:
+                st.caption("Click any point in the sea to inspect that pixel: its value, time series and, for "
+                           "variables with depth, its vertical profile.")
     meta = next((v for v in catalogue if v["id"] == st.session_state.selected_var_id), None)
     depth = None
     obs_months, fc_months = [], []
@@ -308,10 +457,28 @@ def map_tab():
     # ---------------------------------------------------------- Screens 1 and 3: map, depth, slider, legend
     with map_col:
         layer = folium.FeatureGroup(name="data")
+        pixel = None
         if meta:
             uri, bounds = render_slice(meta["id"], "forecast" if is_forecast else "netcdf", selected_month, depth,
                                        meta["colormap"], meta["vmin"], meta["vmax"], meta["log_scale"])
             ImageOverlay(image=uri, bounds=bounds, opacity=0.85 if not is_forecast else 0.75).add_to(layer)
+            pc = st.session_state.pixel_click
+            if pc:
+                pixel = nearest_cell(meta["id"], pc["lat"], pc["lng"])
+            if pixel:
+                obs_px, fc_px = pixel_series(meta["id"], *pixel)
+                src = fc_px if is_forecast and fc_px is not None else obs_px
+                col = depth if depth is not None else None
+                px_val = src[col].get(pd.Timestamp(selected_month + "-01"), np.nan) if col in src.columns else np.nan
+                val_txt = "no data" if not np.isfinite(px_val) else f"{px_val:.4g} {meta['display_unit']}"
+                html = (f"<div style='font:13px sans-serif;min-width:170px'><b>{pixel[1]:.3f}°E, {pixel[0]:.3f}°N</b>"
+                        f"<br>{meta['display_label']}: <b>{val_txt}</b><br>{selected_month}"
+                        f"{' (forecast)' if is_forecast else ''}"
+                        f"{' · ' + depth_label(depth) if depth is not None else ''}</div>")
+                folium.CircleMarker([pixel[0], pixel[1]], radius=7, color="#ffffff", weight=2, fill=True,
+                                    fill_color="#111827", fill_opacity=1,
+                                    tooltip=folium.Tooltip(html, permanent=True, direction="right",
+                                                           offset=(10, 0))).add_to(layer)
 
         out = st_folium(base_map(), feature_group_to_add=layer, use_container_width=True, height=560,
                         returned_objects=["last_clicked"], key="main_map")
@@ -319,9 +486,13 @@ def map_tab():
         click = out.get("last_clicked") if out else None
         if click and click != st.session_state.last_click:
             st.session_state.last_click = click
-            if inside(click, boundary_poly) and not st.session_state.panel_open:
-                st.session_state.panel_open = True
-                st.rerun(scope="fragment")
+            if inside(click, boundary_poly):
+                if not st.session_state.panel_open:
+                    st.session_state.panel_open = True
+                    st.rerun(scope="fragment")
+                elif meta:
+                    st.session_state.pixel_click = click
+                    st.rerun(scope="fragment")
 
         if meta:
             if meta["depths"]:
@@ -345,12 +516,16 @@ def map_tab():
                     st.caption("Empty cells: no data. Satellite ocean colour has gaps in the June–September monsoon "
                                "because of cloud cover." if meta["satellite"] else "Empty cells: outside the boundary.")
 
-    # ---------------------------------------------------------- chart, CSV and citation
+    # ---------------------------------------------------------- pixel inspector
     if not meta:
         return
-    st.divider()
     sel_ts = pd.Timestamp(selected_month + "-01")
     label, unit = meta["display_label"], meta["display_unit"]
+    if pixel:
+        pixel_inspector(meta, pixel, depth, sel_ts, selected_month, is_forecast, obs_px, fc_px)
+
+    # ---------------------------------------------------------- chart, CSV and citation
+    st.divider()
     export = ts_df.assign(date=ts_df["date"].dt.strftime("%Y-%m-%d"), type="observed")
     if depth is not None:
         export.insert(1, "depth_m", depth)
