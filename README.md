@@ -53,5 +53,5 @@ Data downloading and clipping stay outside the app; the site only reads the prep
 
 ## Sources and licences
 Copernicus Marine Service products (DOIs in `data/catalogue.json`); Marine Regions boundary (CC BY 4.0).
-Marine protected area outlines were digitised by Mohammad Azharul Islam from *Bangladesh Maritime Journal* 7(1),
-https://doi.org/10.70279/bmj-v7-i1-1046. Biodiversity was dropped from scope on 28 Oct because it is not a Copernicus Marine product.
+Marine protected area outlines were digitised by Mohammad Azharul Islam (Islam et al., *Bangladesh Maritime Journal* 9(1),
+227–250, https://doi.org/10.70279/bmj-v7-i1-1046). Biodiversity was dropped from scope on 28 Oct because it is not a Copernicus Marine product.

@@ -25,8 +25,9 @@ data/
 - **Forecast stats CSV columns:** `date`, `depth` (blank for 2D), `mean`, `lower`, `upper`.
 - **Marine protected areas:** one feature per MPA with `name`, `area_km2`, `source_file`, EPSG:4326. Swatch of No
   Ground, Nijhum Dwip (three overlapping polygons in the source merged into one), St. Martin's Island and Naf.
-  Digitised by Mohammad Azharul Islam (DeepBengal team) from the boundaries in *Bangladesh Maritime Journal*,
-  Vol. 7, Issue 1, https://doi.org/10.70279/bmj-v7-i1-1046 (no ready-made shapefiles exist for these MPAs).
+  Digitised by Mohammad Azharul Islam (DeepBengal team) for Islam et al., "Inter-comparison of chlorophyll-a and associated
+  physio-chemical parameters in the three Marine Protected Areas of Bangladesh utilizing remote sensing datasets",
+  *Bangladesh Maritime Journal* 9(1), 227–250, https://doi.org/10.70279/bmj-v7-i1-1046 (no ready-made shapefiles exist for these MPAs).
 - **Time series CSV columns:** `date` (YYYY-MM-01), `mean`, `min`, `max`, `std`, `n_cells`. For depth variables the
   app computes these at the selected depth from the NetCDF, so the chart always matches the map.
 - **catalogue.json:** one entry per variable with `id`, `label`, `unit`, `product_id`, `dataset_id`, `first_date`,

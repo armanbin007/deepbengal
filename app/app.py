@@ -533,9 +533,9 @@ def map_tab():
                         f"<span style='display:inline-block;width:18px;border-top:3px dashed {MPA_COLORS.get(n, '#e11d48')};"
                         f"vertical-align:middle;margin-right:5px'></span>{n}</span>" for n, _ in mpas),
                         unsafe_allow_html=True)
-                    st.caption("MPA outlines digitised by Mohammad Azharul Islam from the boundaries in Bangladesh "
-                               "Maritime Journal 7(1), [doi:10.70279/bmj-v7-i1-1046]"
-                               "(https://doi.org/10.70279/bmj-v7-i1-1046).")
+                    st.caption("MPA outlines digitised by Mohammad Azharul Islam (Islam et al., *Bangladesh Maritime "
+                               "Journal* 9(1), 227–250, [doi:10.70279/bmj-v7-i1-1046]"
+                               "(https://doi.org/10.70279/bmj-v7-i1-1046)).")
 
         if meta:
             if meta["depths"]:
