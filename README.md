@@ -25,7 +25,8 @@ draws it on the map with a month slider and a time-series chart.
 | Oct 30: full data, overlays with legend, depth selector, month slider, chart with selected month, CSV download, citation, in-place updates | ✅ done |
 | Oct 30: U-Net 12-month forecasts for all 26 variables (mentor suggestion), shown on the slider and chart | ✅ done |
 | Oct 30: Copernicus-style pixel inspector; marine protected area outlines (SoNG, Nijhum Dwip, St. Martin's, Naf) | ✅ done |
-| Oct 31: methods page, second click (grid cell), testing, deploy | ⏳ |
+| Oct 31: About and methods page, acceptance checklist (17/17 pass), phone and projector test, deploy prep | ✅ done |
+| Oct 31: deploy on Streamlit Community Cloud and record the backup video | ⏳ team |
 
 ## Timeline
 | When | Spec writer | Data person | Developer |
@@ -50,6 +51,33 @@ pip install -r requirements.txt
 streamlit run app/app.py
 ```
 Data downloading and clipping stay outside the app; the site only reads the prepared files in `data/`.
+
+## Deploy (Streamlit Community Cloud)
+1. Go to share.streamlit.io and sign in with GitHub.
+2. **Create app → Deploy a public app from GitHub**: repository `armanbin007/deepbengal`, branch `main`,
+   main file `app/app.py`. Under **Advanced settings** choose Python 3.12.
+3. Click **Deploy**. The first build takes a few minutes; `requirements.txt` and `.streamlit/config.toml` are read
+   automatically. The app uses about 230 MB at start-up, well inside the free tier.
+4. Open the link on a phone and on the demo projector, then record the 2-minute backup video
+   (`docs/demo_script.md`).
+
+## Acceptance checklist (Oct 31, real data)
+| # | Check | Result |
+|---|---|---|
+| 1 | Page opens on the boundary with no other layer | ✅ |
+| 2 | Clicking the boundary opens the panel (clicks outside ignored) | ✅ |
+| 3 | All 26 variables listed with unit, years and source | ✅ |
+| 4 | Choosing a variable draws it with a legend showing the unit | ✅ |
+| 5 | Month slider changes the map in under 2 s | ✅ about 0.3 s |
+| 6 | Chart shows the same variable and marks the selected month | ✅ |
+| 7 | CSV download gives the chart data (with forecast rows) | ✅ |
+| 8 | Source citation shown | ✅ |
+| 9 | Depth selector changes map and chart | ✅ |
+| 10 | Forecast months and note shown | ✅ |
+| 11 | Four MPA outlines with legend | ✅ |
+| 12 | Pixel inspector: value, series, profile, depth–time section, MPA name | ✅ |
+| 13 | Methods page: products with DOIs, outside sources with licences, forecast scores | ✅ |
+| 14 | Phone (390 px), projector 720p and 1080p: works, no sideways scroll | ✅ (deployed link still to test) |
 
 ## Sources and licences
 Copernicus Marine Service products (DOIs in `data/catalogue.json`); Marine Regions boundary (CC BY 4.0).
