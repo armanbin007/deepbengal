@@ -76,10 +76,20 @@ def open_grid(var_id, kind="netcdf"):
     if not path.exists():
         return None
     with xr.open_dataset(path) as ds:
-        da = ds[var_id].load()
+        da = ds[var_id].astype("float32").load()      # 32-bit is plenty for display and halves memory
     if da.latitude[0] > da.latitude[-1]:
         da = da.isel(latitude=slice(None, None, -1))
     return da
+
+
+@st.cache_data
+def depth_levels(var_id):
+    """Depth levels from the file's metadata only (no data loaded, so start-up stays light)."""
+    path = DATA / "netcdf" / f"{var_id}_monthly.nc"
+    if not path.exists():
+        return []
+    with xr.open_dataset(path) as ds:
+        return [float(d) for d in ds["depth"].values] if "depth" in ds[var_id].dims else []
 
 
 @st.cache_data
@@ -96,8 +106,7 @@ def load_catalogue():
         v.setdefault("source", source)
         v.setdefault("satellite", satellite)
         v.setdefault("log_scale", v["id"] in LOG_SCALE_IDS and v["vmin"] > 0)
-        da = open_grid(v["id"])
-        v["depths"] = [float(d) for d in da.depth.values] if da is not None and "depth" in da.dims else []
+        v["depths"] = depth_levels(v["id"])
         v["has_forecast"] = (FORECAST / f"{v['id']}_forecast.nc").exists()
         v["skill"] = skill.get(v["id"])
     return catalogue
@@ -632,4 +641,95 @@ def map_tab():
             st.markdown(f"[Product page]({meta['source_url']})")
 
 
-map_tab()
+tab_map, tab_methods = st.tabs(["Map", "About and methods"])
+with tab_map:
+    map_tab()
+
+# ------------------------------------------------------------------ About and methods
+with tab_methods:
+    st.header("About and methods")
+    st.markdown(f"""
+### Boundary
+The map shows the {ZONE_NAME}, stored as `bd_maritime_boundary.geojson` (EPSG:4326, lightly simplified).
+It is the Marine Regions *Bangladeshi Exclusive Economic Zone* polygon (MRGID 8481, 200 NM, about 112,000 km²).
+
+**Citation:** Flanders Marine Institute (2023). Maritime Boundaries Geodatabase: Maritime Boundaries and Exclusive
+Economic Zones (200NM), version 12. Available online at marineregions.org. https://doi.org/10.14284/632
+
+**Licence:** Creative Commons Attribution 4.0 International (CC BY 4.0).
+
+**Boundary note:** The Marine Regions v12 polygon incorporates the maritime boundaries established under the 2012
+ITLOS (Bangladesh/Myanmar) and 2014 PCA (Bangladesh/India) arbitration awards. It has not been checked point by
+point against the officially declared coordinates. The polygon also follows river channels north of 23°N; the ocean
+products hold no data there, so those parts of the map stay empty.
+""")
+    if mpa_geojson:
+        st.markdown("### Marine protected areas\n"
+                    "Dashed outlines show Bangladesh's four declared marine protected areas. The outlines were digitised by "
+                    "Mohammad Azharul Islam (DeepBengal team) because no ready-made shapefiles exist; see *Outside sources* "
+                    "below for the article they follow. Clicking a pixel inside an MPA names it in the pixel panel.")
+        st.dataframe(pd.DataFrame([{"Marine protected area": f["properties"]["name"],
+                                    "Area (km², from the outline)": f["properties"]["area_km2"]}
+                                   for f in mpa_geojson["features"]]), hide_index=True)
+    st.markdown("""
+### How the data were prepared
+Monthly fields were downloaded from the Copernicus Marine Data Store for the boundary area and clipped to the
+boundary so cells outside the zone are empty. Physics and biogeochemistry variables keep their upper depth levels
+(about 0.5–14 m) so they can be viewed by depth. For each month the boundary-wide mean, minimum, maximum and
+standard deviation are shown; for depth variables they are computed at the selected depth. Clicking a pixel shows
+that grid cell's value, its full time series, its vertical profile and a depth–time section for the last three years
+plus the forecast year, as in the Copernicus Marine viewer. The website only reads these prepared files.
+
+### 12-month forecasts (U-Net)
+For each variable a small U-Net (a convolutional neural network that maps images to images) takes the last 12
+monthly maps, as differences from that month's long-term average, and predicts the next 12 maps in one step; all
+depth levels are predicted together. To test it honestly, the last 24 months were hidden from training and
+forecast from 13 different start months, then compared with an "average year" baseline (climatology) and with
+"this month's anomaly carries on" (persistence). The final model was retrained on all months. The forecast band on
+the chart is the 95% range of the boundary-mean errors in that test. Forecasts are statistical, not physical ocean
+model runs, and grow less reliable with lead time. Code: `model/train_unet.py`.
+""")
+    skill = load_skill()
+    if skill:
+        sk_df = pd.DataFrame([{"Variable": DISPLAY_LABEL.get(k, k), "id": k, "Test period": v["test_period"],
+                               "RMSE U-Net": v["rmse_unet"], "RMSE average year": v["rmse_climatology"],
+                               "RMSE persistence": v["rmse_persistence"],
+                               "Skill vs average year": v["skill_vs_climatology"],
+                               "Forecast": v["forecast_period"]} for k, v in skill.items()])
+        st.dataframe(sk_df, width="stretch", hide_index=True, height=36 * (len(sk_df) + 1) + 4,
+                     column_config={"Skill vs average year": st.column_config.NumberColumn(format="%.2f")})
+        st.caption("Skill above 0 means the U-Net beat the average-year baseline on the hidden test period.")
+
+    st.markdown("### Copernicus Marine products")
+    products = {}
+    for v in catalogue:
+        p = products.setdefault(v["product_id"], {"Product": v["product_title"], "Product ID": v["product_id"],
+                                                  "Dataset IDs": set(), "Variables": [], "DOI": v["doi"]})
+        p["Dataset IDs"].add(v["dataset_id"])
+        p["Variables"].append(v["id"])
+    prod_df = pd.DataFrame([{**p, "Dataset IDs": ", ".join(sorted(p["Dataset IDs"])),
+                             "Variables": ", ".join(p["Variables"])} for p in products.values()])
+    st.dataframe(prod_df, width="stretch", hide_index=True, column_config={"DOI": st.column_config.LinkColumn("DOI")})
+    st.caption("Cite as: E.U. Copernicus Marine Service Information (CMEMS), followed by the product DOI.")
+
+    st.markdown("### Variables")
+    var_df = pd.DataFrame([{"Group": v["group"], "id": v["id"], "Name": v["display_label"],
+                            "Copernicus long name": v["label"], "Unit": v["display_unit"],
+                            "Depth levels": str(len(v["depths"])) if v["depths"] else "surface", "First": v["first_date"],
+                            "Last": v["last_date"], "Grid": v["grid_resolution"]} for v in catalogue])
+    st.dataframe(var_df, width="stretch", hide_index=True, height=36 * (len(var_df) + 1) + 4)
+
+    st.markdown("""
+### Outside sources and licences
+| Source | Used for | Licence |
+|---|---|---|
+| Marine Regions, Maritime Boundaries Geodatabase v12 (Flanders Marine Institute, 2023), doi:10.14284/632 | Boundary polygon | CC BY 4.0 |
+| Marine protected areas (Swatch of No Ground, Nijhum Dwip, St. Martin's Island, Naf): digitised by Mohammad Azharul Islam (DeepBengal team). Islam, M. A., Chowdhury, K. M. A., Hasan, M. T., Mohammad, K., Moontahab, A., & Nuhas, F. R. Inter-comparison of chlorophyll-a and associated physio-chemical parameters in the three Marine Protected Areas of Bangladesh utilizing remote sensing datasets. *Bangladesh Maritime Journal*, 9(1), 227–250. https://doi.org/10.70279/bmj-v7-i1-1046 | MPA outlines | Team-made shapefiles; cite the article |
+| Esri World Light Gray Base | Basemap tiles | Esri terms of use, attribution shown on the map |
+
+### Limitations
+* Satellite ocean colour (CHL, KD490, ZSD) has gaps in the June–September monsoon because of cloud cover.
+  Missing cells are left empty.
+* Dissolved inorganic carbon (`dissic`) is not offered in the monthly biogeochemistry dataset, so it is not shown.
+* Forecasts are U-Net statistical predictions, tested on 24 hidden months; they are not observations.
+""")
